@@ -1,0 +1,40 @@
+ GCC_1:
+ sim-cache -config <config file> cc1.ss gcc.i
+ 
+ GCC_2:
+ sim-cache -config <config file> cc1.ss cccp.i
+ 
+ GCC_3:
+ sim-cache -config <config file> cc1.ss stmt.i
+ 
+ GCC_4:
+ sim-cache -config <config file> cc1.ss jump.i 
+ 
+ GO_1:
+ sim-cache -config <config file> go.ss 50 9 2stone9.in
+ 
+ LI_1:
+ sim-cache -config <config file> li.ss li.lsp
+ LI_2:
+ sim-cache -config <config file> li.ss queen6.lsp
+ LI_3:
+ sim-cache -config <config file> li.ss train.lsp
+ 
+ PERL_1:
+ sim-cache -config <config file> perl.ss scrabbl.pl < scrabbl.in
+ 
+ VORTEX_1:
+ sim-cache -config <config file> vortex.ss vortex.in
+ VORTEX_2:
+ sim-cache -config <config file> vortex.ss tiny.in
+ 
+ IJPEG_1:
+ sim-cache -config <config file> ijpeg.ss -image_file tinyrose.ppm -compression.quality 90 -compression.optimize_coding 0 -compression.smoothing_factor 90 -difference.image 1 -difference.x_stride 10 -difference.y_stride 10 -verbose 1 -GO.findoptcomp
+ IJPEG_2:
+ sim-cache -config <config file> ijpeg.ss -image_file specmun.ppm -compression.quality 90 -compression.optimize_coding 0 -compression.smoothing_factor 90 -difference.image 1 -difference.x_stride 10 -difference.y_stride 10 -verbose 1 -GO.findoptcomp
+ IJPEG_3:
+ sim-cache -config <config file> ijpeg.ss -image_file ijpeg.ppm -compression.quality 90 -compression.optimize_coding 0 -compression.smoothing_factor 90 -difference.image 1 -difference.x_stride 10 -difference.y_stride 10 -verbose 1 -GO.findoptcomp
+ 
+ 
+ 
+ 
