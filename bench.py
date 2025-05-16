@@ -151,7 +151,7 @@ class UnifiedCache(Cache):
         self.strategy = strategy
 
     def __str__(self):
-        return f"-cache:il{self.level} dl{self.level} -cache:dl{self.level} {super.__str__().split(' ')[1]}"
+        return f"-cache:il{self.level} dl{self.level} -cache:dl{self.level} {super().__str__().split(' ')[1]}"
 
 @dataclass
 class HavardCache:
@@ -206,11 +206,17 @@ class Config:
         for k,v in zip(cmd[1:-2:2], cmd[2:-2:2]):
             args[k] = v
         args['benchmark'] = ';'.join(map(lambda x: os.path.basename(x), self.bench.split()))
+        if not isinstance(self.l1, NoneCache):
+            args['size'] = self.l1.blocks * self.l1.associativity * self.l1.sets 
+        if not isinstance(self.l2, NoneCache):
+            args['size'] += self.l2.blocks * self.l2.associativity * self.l2.sets 
 
 
         print(' '.join(cmd))
         res = sp.run(cmd,  capture_output=True, text=True)
         print(res.returncode)
+        if(res.returncode):
+            print(res.stderr)
 
         return Report(res.stderr, args)
 
@@ -220,14 +226,24 @@ class Config:
 
 
 
-
+BENCHMARKS = [
+    "./benchmarks/go/go.ss 50 9 ./benchmarks/go/2stone9.in",
+    "./benchmarks/vortex/vortex.ss ./benchmarks/go/tiny.in"
+]
 
 def gen_exp_2() -> None:
-    df = None
-    config  = Config("./Benchmarks/gcc/cc1.ss ./Benchmarks/gcc/gcc.i", UnifiedCache(1, ))
-    report = config.run()
-    df = report.to_df(df)
-    print(df)
+    df: Union[pd.DataFrame, None] = None
+
+    for bench in BENCHMARKS:
+        for block in [2**i for i in range(3, 30)]:
+            for sets in [2 ** i for i in range(30)]:
+                for ways in [2 ** i for i in range(30)]:
+                    print(f"[RUNNING] blocks={block}, sets={sets}, ways={ways}")
+                    config  = Config(bench, UnifiedCache(1, sets, block, ways, 'LRU'))
+                    report = config.run()
+                    df = report.to_df(df)
+
+    df.to_csv('exp_II.csv')
     
 
 
