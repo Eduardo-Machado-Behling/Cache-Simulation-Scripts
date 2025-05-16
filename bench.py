@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 import re
 from typing import *
 import collections
+import sys
+
+from pandas.io.pickle import pickle
 
 
 @dataclass
@@ -106,7 +109,7 @@ class Report:
         for k,v in caches.items():
             self.caches[k] = Report.Cache(*v)
     
-    def to_df(self, df: Union[None, pd.DataFrame] = None) -> pd.DataFrame:
+    def to_df(self, df: pd.DataFrame) -> pd.DataFrame:
         keys = collections.defaultdict(list)
 
         for k,v in self.sim.__dict__.items():
@@ -124,7 +127,7 @@ class Report:
                 keys[f"cache {k}: {k1.replace('_', ' ')}"].append(v1)
 
         data = pd.DataFrame({**{k:[v] for k,v in self.args.items()}, **keys})
-        return pd.concat(df, data) if df else data
+        return pd.concat([df, data]) if not df.empty else data
 
 
 
@@ -196,8 +199,8 @@ class Config:
 
 
     bench: str
-    l1: Config.Cache = NoneCache(1)
-    l2: Config.Cache = NoneCache(2)
+    l1: Config.Cache = field(default_factory=lambda : NoneCache(1))
+    l2: Config.Cache = field(default_factory=lambda : NoneCache(2))
 
     def run(self) -> Report:
         args = {}
@@ -214,36 +217,79 @@ class Config:
 
         print(' '.join(cmd))
         res = sp.run(cmd,  capture_output=True, text=True)
-        print(res.returncode)
+        print("Failed" if res.returncode else "Passed")
         if(res.returncode):
             print(res.stderr)
 
         return Report(res.stderr, args)
 
+@dataclass
+class Checkpoint:
+    block: int = 0
+    sets: int = 0
+    ways: int = 0
+    benchmark: int = 0
+    df: pd.DataFrame = field(default_factory=pd.DataFrame, repr=False)
 
+    def str(self, blocks, sets, ways, benchs) -> str:
+        return f"block={blocks[self.block]}, sets={sets[self.sets]}, ways={ways[self.ways]}, bench={benchs[self.benchmark]}"
 
-
-
+    
 
 
 BENCHMARKS = [
     "./benchmarks/go/go.ss 50 9 ./benchmarks/go/2stone9.in",
-    "./benchmarks/vortex/vortex.ss ./benchmarks/go/tiny.in"
+    "./benchmarks/vortex/vortex.ss ./benchmarks/vortex/tiny.in"
 ]
 
 def gen_exp_2() -> None:
-    df: Union[pd.DataFrame, None] = None
+    load = True
+    if os.path.exists("checkpoint.pickle"):
+        with open("checkpoint.pickle", 'rb') as check:
+            checkpoint = pickle.load(check)
+    else:
+        checkpoint = Checkpoint()
 
-    for bench in BENCHMARKS:
-        for block in [2**i for i in range(3, 30)]:
-            for sets in [2 ** i for i in range(30)]:
-                for ways in [2 ** i for i in range(30)]:
-                    print(f"[RUNNING] blocks={block}, sets={sets}, ways={ways}")
-                    config  = Config(bench, UnifiedCache(1, sets, block, ways, 'LRU'))
-                    report = config.run()
-                    df = report.to_df(df)
+    blocks = [2**i for i in range(3, 30)]
+    sets = [2 ** i for i in range(30)]
+    ways = [2 ** i for i in range(30)]
+    while checkpoint.block < len(blocks):
+        blk = blocks[checkpoint.block]
+        while checkpoint.sets < len(sets):
+            st = sets[checkpoint.sets]
+            while checkpoint.ways < len(ways):
+                way = ways[checkpoint.ways]
+                while checkpoint.benchmark < len(BENCHMARKS):
+                    bench = BENCHMARKS[checkpoint.benchmark]
+                    try:
+                        print(f"[RUNNING] {checkpoint.str(blocks, sets, ways, BENCHMARKS)}")
+                        config  = Config(bench, UnifiedCache(1, st, blk, way, 'LRU'))
+                        report = config.run()
+                        checkpoint.df = report.to_df(checkpoint.df)
+                    except KeyboardInterrupt:
+                        print(checkpoint.df)
+                        print("SAVING CHECKPOINT")
+                        with open("checkpoint.pickle", 'wb') as check:
+                            pickle.dump(checkpoint, check)
+                        sys.exit()  # Exit the program when KeyboardInterrupt is raised
+                    except Exception as e:
+                        print(e)
+                        pass
+                    print(checkpoint.df)
+                    if checkpoint.ways % 10 == 0:
+                        print("SAVING CHECKPOINT")
+                        with open("checkpoint.pickle", 'wb') as check:
+                            pickle.dump(checkpoint, check)
 
-    df.to_csv('exp_II.csv')
+                    checkpoint.benchmark += 1
+                checkpoint.benchmark = 0
+                checkpoint.ways += 1
+            checkpoint.ways = 0
+            checkpoint.sets += 1
+        checkpoint.sets = 0
+        checkpoint.block += 1
+
+    checkpoint.df.to_csv('exp_II.csv')
     
 
 
