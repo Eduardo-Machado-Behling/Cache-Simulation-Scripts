@@ -1,3 +1,6 @@
 .venv
 checkpoint.pickle
 .vscode
+*.csv
+*.queue*
+*_check*

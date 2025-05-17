@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import os
 import pandas as pd
 import subprocess as sp
@@ -14,6 +15,7 @@ import threading
 import queue
 import time
 from persistqueue import Queue
+import itertools
 import pickle
 
 
@@ -146,6 +148,10 @@ class Cache:
     def __str__(self):
         return f"-cache:{self.type[0]}l{self.level} {self.type[0]}l{self.level}:{self.sets}:{self.blocks}:{self.associativity}:{self.strategy[0].lower()}"
 
+    @property
+    def size(self):
+        return self.sets * self.blocks * self.associativity
+
 
 @dataclass
 class UnifiedCache(Cache):
@@ -157,8 +163,10 @@ class UnifiedCache(Cache):
         self.associativity = associativity
         self.strategy = strategy
 
+
     def __str__(self):
         return f"-cache:il{self.level} dl{self.level} -cache:dl{self.level} {super().__str__().split(' ')[1]}"
+    
 
 
 @dataclass
@@ -184,6 +192,10 @@ class HavardCache:
     inst: InstructionCache
     data: DataCache
 
+    @property
+    def size(self):
+        return self.inst.size + self.data.size
+
     def __str__(self):
         return f"{self.inst} {self.data}"
 
@@ -207,24 +219,28 @@ class Config:
     def run(self) -> Report:
         args = {}
 
-        cmd = f"sim-cache {self.l1} {self.l2} -tlb:dtlb none -tlb:itlb none {self.bench}".split(
-            ' ')
+        cmd = f"sim-cache {self.l1} {self.l2} -tlb:dtlb none -tlb:itlb none {self.bench}".split(' ')
         for k, v in zip(cmd[1:-2:2], cmd[2:-2:2]):
             args[k] = v
         args['benchmark'] = ';'.join(
             map(lambda x: os.path.basename(x), self.bench.split()))
         if not isinstance(self.l1, NoneCache):
-            args['size'] = self.l1.blocks * \
-                self.l1.associativity * self.l1.sets
+            args['size'] = self.l1.size
         if not isinstance(self.l2, NoneCache):
-            args['size'] += self.l2.blocks * \
-                self.l2.associativity * self.l2.sets
+            args['size'] += self.l2.size
 
         print(' '.join(cmd))
-        res = sp.run(cmd,  capture_output=True, text=True)
         print("DONE")
+        out = ""
+        with tempfile.TemporaryFile(mode='w+') as temp_stderr:
+            # Run the subprocess, redirecting stderr to the temporary file
+            process = sp.Popen( cmd, stderr=temp_stderr, stdout=sp.DEVNULL)
+            process.wait()  # Wait for the subprocess to finish
 
-        return Report(res.stderr, args)
+            temp_stderr.seek(0)
+            out = temp_stderr.read()
+
+        return Report(out, args)
 
 
 @dataclass
@@ -234,17 +250,17 @@ class Checkpoint:
     out = Queue('output.queue', autosave=False)
 
     def load(self) -> bool:
-        if os.path.exists("checkpoint.pickle"):
-            with open("checkpoint.pickle", 'rb') as check:
-                self.df = pickle.load(check)
+        if os.path.exists("exp_II_check.csv"):
+            self.df = pd.read_csv('exp_II_check.csv')
             return True
         else:
             return False
 
     def save(self):
         print("SAVING CHECKPOINT")
-        with open("checkpoint.pickle", 'wb') as check:
-            pickle.dump(self.df, check)
+        self.df.to_csv('exp_II_check.csv')
+        self.inp._saveinfo()
+        self.out._saveinfo()
 
     def str(self, blocks, sets, ways, benchs) -> str:
         return f"block={blocks[self.block]}, sets={sets[self.sets]}, ways={ways[self.ways]}, bench={benchs[self.benchmark]}"
@@ -282,20 +298,21 @@ def gen_exp_2() -> None:
     blocks = [2**i for i in range(3, 30)]
     sets = [2 ** i for i in range(30)]
     ways = [2 ** i for i in range(30)]
-    t = len(blocks) * len(sets) * len(ways) * len(BENCHMARKS)
+    args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
+    t = len(args) * 2
 
     def populate():
-
         i = 0
-        for block in blocks:
-            for st in sets:
-                for way in ways:
-                    for bench in BENCHMARKS:
-                        config = Config(bench, UnifiedCache(
-                            1, st, block, way, 'LRU'))
-                        i += 1
-                        print(f"[POPULATE {i}/{t}] {Config}")
-                        checkpoint.inp.put(config)
+        for block, st, way in map(lambda x: (2**x[0], 2**x[1], 2**x[2]), args):
+            for bench in BENCHMARKS:
+                config = Config(bench, UnifiedCache(
+                    1, st, block, way, 'LRU'))
+                i += 1
+                print(f"[POPULATE {i}/{t}] {config}")
+                checkpoint.inp.put(config)
+
+        for _ in range(THRD_AMOUNT):
+            checkpoint.inp.put(None)
 
     if not checkpoint.load():
         populate()
@@ -338,9 +355,103 @@ def gen_exp_2() -> None:
 
     checkpoint.df.to_csv('exp_II.csv')
 
+def generate_args(max: int):
+    for x in range(3, max):
+        for y in range(max):
+            s1 = x + y
+            if s1 > max:
+                continue
+            for z in range(max):
+                s2 = s1 + z
+                if s2 > max:
+                    continue
+                for a in range(3, max):
+                    s3 = s2 + a
+                    if s3 > max:
+                        continue
+                    for b in range(max):
+                        s4 = s3 + b
+                        if s4 > max:
+                            continue
+                        for c in range(max):
+                            if s4 + c <= max:
+                                yield (x, y, z, a, b, c)
+
+def gen_args(max: int):
+    range_values = range(max)  # Define the range for each variable
+
+    return [
+        (x, y, z, a, b, c)
+        for x, y, z, a, b, c in itertools.product(range_values, repeat=6)
+        if x + y + z + a + b + c <= max and x > 2 and a > 2
+    ]
+
+def gen_exp_4() -> None:
+    checkpoint = Checkpoint()
+
+
+    def populate():
+        args = list(gen_args(20))
+        t = len(args) * 2
+        i = 0
+        for block, st, way, block2, st2, way2 in map(lambda x: map(lambda y: 2**y, x), args):
+            for bench in BENCHMARKS:
+                config = Config(bench, HavardCache(
+                    HavardCache.InstructionCache( 1, st, block, way, 'LRU'),
+                    HavardCache.DataCache( 1, st2, block2, way2, 'LRU')
+                ))
+                i += 1
+                print(f"[POPULATE {i}/{t}] {config}")
+                checkpoint.inp.put(config)
+
+        for _ in range(THRD_AMOUNT):
+            checkpoint.inp.put(None)
+
+    if not checkpoint.load():
+        populate()
+        checkpoint.save()
+
+    threads = [RunThread(checkpoint.inp, checkpoint.out)
+               for _ in range(THRD_AMOUNT)]
+
+    for _ in range(len(threads)):
+        checkpoint.inp.put(None)
+
+    for thrd in threads:
+        thrd.start()
+
+    last = 0
+    refresh = 10
+    try:
+        while not checkpoint.inp.empty() or not checkpoint.out.empty():
+            curr = 0
+            while not checkpoint.out.empty():
+                curr += 1
+                report: Report = checkpoint.out.get_nowait()
+                checkpoint.df = report.to_df(checkpoint.df)
+                checkpoint.out.task_done()
+            
+            rate = (curr - last) / refresh
+            remaing = checkpoint.inp.qsize()
+            estimate = time.strftime('%H:%M:%S', time.gmtime((1/rate)*remaing)) if rate != 0 else "inf"
+            print(f"[WORKING] tasks_remaining={remaing}, rate={rate:.4f}(task/s), estimate={estimate}, df={checkpoint.df.shape}")
+            last = curr
+            if curr != 0:
+                checkpoint.save()
+            time.sleep(refresh)
+    except KeyboardInterrupt:
+        checkpoint.save()
+        sys.exit()
+    except Exception as e:
+        print("ERROR: ", e)
+        pass
+
+    checkpoint.df.to_csv('exp_I.csv')
+    pass
+
 
 def main() -> None:
-    gen_exp_2()
+    gen_exp_4()
 
 
 if __name__ == '__main__':
