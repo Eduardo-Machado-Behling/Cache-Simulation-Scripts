@@ -4,3 +4,5 @@ checkpoint.pickle
 *.csv
 *.queue*
 *_check*
+*.log
+*.db*

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import threading
+import sqlite3
+import pickle
+from pathlib import Path
 import tempfile
 import os
 import pandas as pd
@@ -14,9 +18,9 @@ import sys
 import threading
 import queue
 import time
+import multiprocessing
 from persistqueue import Queue
 import itertools
-import pickle
 
 
 @dataclass
@@ -216,7 +220,7 @@ class Config:
     l1: Config.Cache = field(default_factory=lambda: NoneCache(1))
     l2: Config.Cache = field(default_factory=lambda: NoneCache(2))
 
-    def run(self) -> Report:
+    def run(self, log = None) -> Report:
         args = {}
 
         cmd = f"sim-cache {self.l1} {self.l2} -tlb:dtlb none -tlb:itlb none {self.bench}".split(' ')
@@ -229,8 +233,12 @@ class Config:
         if not isinstance(self.l2, NoneCache):
             args['size'] += self.l2.size
 
-        print(' '.join(cmd))
-        print("DONE")
+        if log == None:
+            print(' '.join(cmd))
+            print("DONE")
+        else: 
+            log.write(' '.join(cmd) + '\n')
+            log.write("DONE\n")
         out = ""
         with tempfile.TemporaryFile(mode='w+') as temp_stderr:
             # Run the subprocess, redirecting stderr to the temporary file
@@ -243,11 +251,92 @@ class Config:
         return Report(out, args)
 
 
+
+
+BENCHMARKS = [
+    "./benchmarks/go/go.ss 50 9 ./benchmarks/go/2stone9.in",
+    "./benchmarks/vortex/vortex.ss ./benchmarks/vortex/tiny.in"
+]
+THRD_AMOUNT = 4
+
+class PersistentQueue:
+    def __init__(self, db_path: str):
+        self.db_path = Path(f"{db_path}.db")
+        self.lock = threading.Lock()
+        self.name = db_path
+        self._init_db()
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")  # Optional: improve concurrency
+        self._cursor = self._conn.cursor()
+
+    def _init_db(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data BLOB
+                )
+            """)
+            conn.commit()
+
+    def put(self, obj):
+        """Put with immediate commit (synchronous)"""
+        data = pickle.dumps(obj)
+        with self.lock:
+            self._conn.execute("INSERT INTO queue (data) VALUES (?)", (data,))
+            self._conn.commit()
+
+    def put_unsync(self, obj):
+        """Put without commit (deferred sync)"""
+        data = pickle.dumps(obj)
+        with self.lock:
+            self._conn.execute("INSERT INTO queue (data) VALUES (?)", (data,))
+
+    def sync(self):
+        """Manually flush pending changes"""
+        with self.lock:
+            self._conn.commit()
+
+    def get(self):
+        with self.lock:
+            cursor = self._conn.execute("SELECT id, data FROM queue ORDER BY id LIMIT 1")
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            self._conn.execute("DELETE FROM queue WHERE id = ?", (row[0],))
+            self._conn.commit()
+            return pickle.loads(row[1])
+
+    def empty(self) -> bool:
+        with self.lock:
+            cursor = self._conn.execute("SELECT 1 FROM queue LIMIT 1")
+            return cursor.fetchone() is None
+
+    def size(self) -> int:
+        with self.lock:
+            cursor = self._conn.execute("SELECT COUNT(*) FROM queue")
+            return cursor.fetchone()[0]
+
+    def close(self):
+        """Ensure all writes are flushed and connection is closed cleanly"""
+        with self.lock:
+            self._conn.commit()
+            self._conn.close()
+
+    def put_many_unsync(self, objs):
+        """Buffered insert of many objects without commit."""
+        with self.lock:
+            self._conn.executemany(
+                "INSERT INTO queue (data) VALUES (?)",
+                [(pickle.dumps(obj),) for obj in objs]
+            )
+
+
 @dataclass
 class Checkpoint:
     df: pd.DataFrame = field(default_factory=pd.DataFrame, repr=False)
-    inp = Queue('input.queue', chunksize=5000, autosave=False)
-    out = Queue('output.queue', autosave=False)
+    inp = PersistentQueue('input')
+    out = PersistentQueue('output')
 
     def load(self) -> bool:
         if os.path.exists("exp_II_check.csv"):
@@ -259,38 +348,29 @@ class Checkpoint:
     def save(self):
         print("SAVING CHECKPOINT")
         self.df.to_csv('exp_II_check.csv')
-        self.inp._saveinfo()
-        self.out._saveinfo()
+        self.inp.sync()
+        self.out.sync()
 
     def str(self, blocks, sets, ways, benchs) -> str:
         return f"block={blocks[self.block]}, sets={sets[self.sets]}, ways={ways[self.ways]}, bench={benchs[self.benchmark]}"
 
-
-BENCHMARKS = [
-    "./benchmarks/go/go.ss 50 9 ./benchmarks/go/2stone9.in",
-    "./benchmarks/vortex/vortex.ss ./benchmarks/vortex/tiny.in"
-]
-THRD_AMOUNT = 4
-
-
-class RunThread(threading.Thread):
-    def __init__(self, queue: queue.Queue, res: queue.Queue, group=None, target=None, name=None, args=..., kwargs=None, *, daemon=None):
-        super().__init__(group, target, name, args, kwargs, daemon=daemon)
-        self.queue = queue
-        self.res = res
+class RunThread(multiprocessing.Process):
+    def __init__(self, queue: str, res: str, group=None, target=None, name=None, args=..., kwargs=None, *, daemon=None):
+        super().__init__()
+        self.queue = PersistentQueue(queue)
+        self.res = PersistentQueue(res)
+        self.log = open(f"{self.name}.log", 'w')
 
     def run(self):
+        self.log.write("Running\n")
         while True:
-            task: Union[Config, None] = self.queue.get()
-            if task is None:
-                break  # Exit signal
+            self.log.flush()
+            task: Config = self.queue.get()
             try:
                 self.res.put(task.run())
             except Exception as e:
-                print("ERROR: ", e)
+                print(f"ERROR: {e}\n")
                 pass
-            self.queue.task_done()
-
 
 def gen_exp_2() -> None:
     checkpoint = Checkpoint()
@@ -299,17 +379,30 @@ def gen_exp_2() -> None:
     sets = [2 ** i for i in range(30)]
     ways = [2 ** i for i in range(30)]
     args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
-    t = len(args) * 2
 
     def populate():
+        t = len(args) * 2
         i = 0
-        for block, st, way in map(lambda x: (2**x[0], 2**x[1], 2**x[2]), args):
-            for bench in BENCHMARKS:
-                config = Config(bench, UnifiedCache(
-                    1, st, block, way, 'LRU'))
+        if not os.path.exists('missing.csv'):
+            for block, st, way in map(lambda x: (2**x[0], 2**x[1], 2**x[2]), args):
+                for bench in BENCHMARKS:
+                    config = Config(bench, UnifiedCache(
+                        1, st, block, way, 'LRU'))
+                    i += 1
+                    print(f"[POPULATE {i}/{t}] {config}")
+                    checkpoint.inp.put_unsync(config)
+        else:
+            miss = pd.read_csv('missing.csv')
+            t = miss.shape[0]
+            for row in miss.itertuples(index=False, name='Row'):
+                print(row)
+                config = Config(BENCHMARKS[row[4]], UnifiedCache(
+                    1, row[1], row[3], row[2], 'LRU'))
                 i += 1
                 print(f"[POPULATE {i}/{t}] {config}")
                 checkpoint.inp.put(config)
+
+
 
         for _ in range(THRD_AMOUNT):
             checkpoint.inp.put(None)
@@ -339,7 +432,7 @@ def gen_exp_2() -> None:
                 checkpoint.out.task_done()
             
             rate = (curr - last) / refresh
-            remaing = checkpoint.inp.qsize()
+            remaing = checkpoint.inp.size()
             estimate = time.strftime('%H:%M:%S', time.gmtime((1/rate)*remaing)) if rate != 0 else "inf"
             print(f"[WORKING] tasks_remaining={remaing}, rate={rate:.4f}(task/s), estimate={estimate}, df={checkpoint.df.shape}")
             last = curr
@@ -392,8 +485,10 @@ def gen_exp_4() -> None:
 
     def populate():
         args = list(gen_args(20))
+        args = args[len(args)//2:]
         t = len(args) * 2
         i = 0
+        configs = []
         for block, st, way, block2, st2, way2 in map(lambda x: map(lambda y: 2**y, x), args):
             for bench in BENCHMARKS:
                 config = Config(bench, HavardCache(
@@ -402,8 +497,9 @@ def gen_exp_4() -> None:
                 ))
                 i += 1
                 print(f"[POPULATE {i}/{t}] {config}")
-                checkpoint.inp.put(config)
+                configs.append(config)
 
+        checkpoint.inp.put_many_unsync(configs)
         for _ in range(THRD_AMOUNT):
             checkpoint.inp.put(None)
 
@@ -411,11 +507,8 @@ def gen_exp_4() -> None:
         populate()
         checkpoint.save()
 
-    threads = [RunThread(checkpoint.inp, checkpoint.out)
+    threads = [RunThread(checkpoint.inp.name, checkpoint.out.name)
                for _ in range(THRD_AMOUNT)]
-
-    for _ in range(len(threads)):
-        checkpoint.inp.put(None)
 
     for thrd in threads:
         thrd.start()
@@ -425,14 +518,14 @@ def gen_exp_4() -> None:
     try:
         while not checkpoint.inp.empty() or not checkpoint.out.empty():
             curr = 0
+            print("OUT: ", checkpoint.out.size())
             while not checkpoint.out.empty():
                 curr += 1
-                report: Report = checkpoint.out.get_nowait()
+                report: Report = checkpoint.out.get()
                 checkpoint.df = report.to_df(checkpoint.df)
-                checkpoint.out.task_done()
             
             rate = (curr - last) / refresh
-            remaing = checkpoint.inp.qsize()
+            remaing = checkpoint.inp.size()
             estimate = time.strftime('%H:%M:%S', time.gmtime((1/rate)*remaing)) if rate != 0 else "inf"
             print(f"[WORKING] tasks_remaining={remaing}, rate={rate:.4f}(task/s), estimate={estimate}, df={checkpoint.df.shape}")
             last = curr
