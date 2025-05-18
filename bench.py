@@ -257,7 +257,7 @@ BENCHMARKS = [
     f"{os.path.join(os.getcwd(),'benchmarks','go','go.ss')} 50 9 {os.path.join(os.getcwd(), 'benchmarks','go','2stone9.in')}",
     f"{os.path.join(os.getcwd(),'benchmarks','vortex','vortex.ss')} {os.path.join(os.getcwd(), 'benchmarks','vortex','tiny.in')}"
 ]
-THRD_AMOUNT = 4
+THRD_AMOUNT = 3
 
 class PersistentQueue:
     def __init__(self, db_path: str):
@@ -383,7 +383,7 @@ def gen_exp_2() -> None:
         args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
         t = len(args) * 2
         i = 0
-        args = args[len(args)//2:]
+        args = args[:len(args)//2]
         configs = []
         if not os.path.exists('missing.csv'):
             for block, st, way in map(lambda x: (2**x[0], 2**x[1], 2**x[2]), args):
@@ -421,22 +421,35 @@ def gen_exp_2() -> None:
     for thrd in threads:
         thrd.start()
 
-    last = 0
-    refresh = 10
+    last_processed = 0
+    start_time = time.time()
+    last_time = start_time
+    refresh = 10  # seconds
+
     try:
         while not checkpoint.inp.empty() or not checkpoint.out.empty():
-            curr = 0
+            curr_processed = 0
             while not checkpoint.out.empty():
-                curr += 1
+                curr_processed += 1
                 report: Report = checkpoint.out.get()
                 checkpoint.df = report.to_df(checkpoint.df)
-            
-            rate = (curr - last) / refresh
-            remaing = checkpoint.inp.size()
-            estimate = time.strftime('%H:%M:%S', time.gmtime((1/rate)*remaing)) if rate != 0 else "inf"
-            print(f"[WORKING] tasks_remaining={remaing}, rate={rate:.4f}(task/s), estimate={estimate}, df={checkpoint.df.shape}")
-            last = curr
-            if curr != 0:
+
+            now = time.time()
+            elapsed = now - last_time
+
+            if elapsed > 0 and curr_processed > 0:
+                # Accumulate total and time
+                total_time = now - start_time
+                last_time = now
+                last_processed += curr_processed
+
+                rate = last_processed / total_time  # average task/s
+                remaining = checkpoint.inp.size()
+                eta_seconds = remaining / rate if rate > 0 else float('inf')
+                eta = time.strftime('%H:%M:%S', time.gmtime(eta_seconds)) if eta_seconds != float('inf') else "inf"
+
+                print(f"[WORKING] tasks_remaining={remaining}, rate={rate:.4f} task/s, estimate={eta}, df={checkpoint.df.shape}")
+
                 checkpoint.save()
             time.sleep(refresh)
     except KeyboardInterrupt:
@@ -513,23 +526,35 @@ def gen_exp_4() -> None:
     for thrd in threads:
         thrd.start()
 
-    last = 0
-    refresh = 10
+    last_processed = 0
+    start_time = time.time()
+    last_time = start_time
+    refresh = 10  # seconds
+
     try:
         while not checkpoint.inp.empty() or not checkpoint.out.empty():
-            curr = 0
-            print("OUT: ", checkpoint.out.size())
+            curr_processed = 0
             while not checkpoint.out.empty():
-                curr += 1
+                curr_processed += 1
                 report: Report = checkpoint.out.get()
                 checkpoint.df = report.to_df(checkpoint.df)
-            
-            rate = (curr - last) / refresh
-            remaing = checkpoint.inp.size()
-            estimate = time.strftime('%H:%M:%S', time.gmtime((1/rate)*remaing)) if rate != 0 else "inf"
-            print(f"[WORKING] tasks_remaining={remaing}, rate={rate:.4f}(task/s), estimate={estimate}, df={checkpoint.df.shape}")
-            last = curr
-            if curr != 0:
+
+            now = time.time()
+            elapsed = now - last_time
+
+            if elapsed > 0 and curr_processed > 0:
+                # Accumulate total and time
+                total_time = now - start_time
+                last_time = now
+                last_processed += curr_processed
+
+                rate = last_processed / total_time  # average task/s
+                remaining = checkpoint.inp.size()
+                eta_seconds = remaining / rate if rate > 0 else float('inf')
+                eta = time.strftime('%H:%M:%S', time.gmtime(eta_seconds)) if eta_seconds != float('inf') else "inf"
+
+                print(f"[WORKING] tasks_remaining={remaining}, rate={rate:.4f} task/s, estimate={eta}, df={checkpoint.df.shape}")
+
                 checkpoint.save()
             time.sleep(refresh)
     except KeyboardInterrupt:
@@ -539,8 +564,8 @@ def gen_exp_4() -> None:
         print("ERROR: ", e)
         pass
 
+
     checkpoint.df.to_csv('exp_I.csv')
-    pass
 
 
 def main() -> None:

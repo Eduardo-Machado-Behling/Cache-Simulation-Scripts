@@ -150,9 +150,3 @@
 
     BE HERE NOW !!!
 
-
-
-               ... VORTEx ON LINE ...
-
-
-              ...   END OF SESSION ...
