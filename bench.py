@@ -236,7 +236,7 @@ class Config:
         out = ""
         with tempfile.TemporaryFile(mode='w+') as temp_stderr:
             # Run the subprocess, redirecting stderr to the temporary file
-            process = sp.Popen( cmd, stderr=temp_stderr, stdout=sp.DEVNULL)
+            process = sp.Popen( cmd, stderr=temp_stderr, stdout=sp.DEVNULL, cwd=os.path.join(os.getcwd(), "benchmarks", "vortex"))
             process.wait()  # Wait for the subprocess to finish
 
             temp_stderr.seek(0)
@@ -254,8 +254,8 @@ class Config:
 
 
 BENCHMARKS = [
-    "./benchmarks/go/go.ss 50 9 ./benchmarks/go/2stone9.in",
-    "./benchmarks/vortex/vortex.ss ./benchmarks/vortex/tiny.in"
+    f"{os.path.join(os.getcwd(),'benchmarks','go','go.ss')} 50 9 {os.path.join(os.getcwd(), 'benchmarks','go','2stone9.in')}",
+    f"{os.path.join(os.getcwd(),'benchmarks','vortex','vortex.ss')} {os.path.join(os.getcwd(), 'benchmarks','vortex','tiny.in')}"
 ]
 THRD_AMOUNT = 4
 
@@ -383,7 +383,7 @@ def gen_exp_2() -> None:
         args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
         t = len(args) * 2
         i = 0
-        args = args[:t // 2]
+        args = args[len(args)//2:]
         configs = []
         if not os.path.exists('missing.csv'):
             for block, st, way in map(lambda x: (2**x[0], 2**x[1], 2**x[2]), args):
@@ -428,9 +428,8 @@ def gen_exp_2() -> None:
             curr = 0
             while not checkpoint.out.empty():
                 curr += 1
-                report: Report = checkpoint.out.get_nowait()
+                report: Report = checkpoint.out.get()
                 checkpoint.df = report.to_df(checkpoint.df)
-                checkpoint.out.task_done()
             
             rate = (curr - last) / refresh
             remaing = checkpoint.inp.size()
