@@ -6,3 +6,5 @@ checkpoint.pickle
 *_check*
 *.log
 *.db*
+*.msg
+*.out

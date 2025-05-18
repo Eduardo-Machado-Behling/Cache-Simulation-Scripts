@@ -242,7 +242,7 @@ class Config:
         out = ""
         with tempfile.TemporaryFile(mode='w+') as temp_stderr:
             # Run the subprocess, redirecting stderr to the temporary file
-            process = sp.Popen( cmd, stderr=temp_stderr, stdout=sp.DEVNULL)
+            process = sp.Popen( cmd, stderr=temp_stderr, stdout=sp.DEVNULL, cwd=os.path.join(os.getcwd(), 'benchmarks', 'vortex'))
             process.wait()  # Wait for the subprocess to finish
 
             temp_stderr.seek(0)
@@ -254,10 +254,10 @@ class Config:
 
 
 BENCHMARKS = [
-    "./benchmarks/go/go.ss 50 9 ./benchmarks/go/2stone9.in",
-    "./benchmarks/vortex/vortex.ss ./benchmarks/vortex/tiny.in"
+    f"{os.path.join(os.getcwd(), 'benchmarks', 'go', 'go.ss')} 50 9 {os.path.join(os.getcwd(), 'benchmarks', 'go', '2stone9.in')}",
+    f"{os.path.join(os.getcwd(), 'benchmarks', 'vortex', 'vortex.ss')} {os.path.join(os.getcwd(), 'benchmarks', 'vortex', 'tiny.in')}"
 ]
-THRD_AMOUNT = 4
+THRD_AMOUNT = 2
 
 class PersistentQueue:
     def __init__(self, db_path: str):
@@ -363,7 +363,7 @@ class RunThread(multiprocessing.Process):
 
     def run(self):
         self.log.write("Running\n")
-        while True:
+        while not self.queue.empty():
             self.log.flush()
             task: Config = self.queue.get()
             try:
@@ -383,6 +383,7 @@ def gen_exp_2() -> None:
     def populate():
         t = len(args) * 2
         i = 0
+        configs = []
         if not os.path.exists('missing.csv'):
             for block, st, way in map(lambda x: (2**x[0], 2**x[1], 2**x[2]), args):
                 for bench in BENCHMARKS:
@@ -390,7 +391,7 @@ def gen_exp_2() -> None:
                         1, st, block, way, 'LRU'))
                     i += 1
                     print(f"[POPULATE {i}/{t}] {config}")
-                    checkpoint.inp.put_unsync(config)
+                    configs.append(config)
         else:
             miss = pd.read_csv('missing.csv')
             t = miss.shape[0]
@@ -403,19 +404,15 @@ def gen_exp_2() -> None:
                 checkpoint.inp.put(config)
 
 
-
-        for _ in range(THRD_AMOUNT):
-            checkpoint.inp.put(None)
+        checkpoint.inp.put_many_unsync(configs)
 
     if not checkpoint.load():
         populate()
         checkpoint.save()
 
-    threads = [RunThread(checkpoint.inp, checkpoint.out)
+    threads = [RunThread(checkpoint.inp.name, checkpoint.out.name)
                for _ in range(THRD_AMOUNT)]
 
-    for _ in range(len(threads)):
-        checkpoint.inp.put(None)
 
     for thrd in threads:
         thrd.start()
@@ -425,11 +422,11 @@ def gen_exp_2() -> None:
     try:
         while not checkpoint.inp.empty() or not checkpoint.out.empty():
             curr = 0
+            print("OUT: ", checkpoint.out.size())
             while not checkpoint.out.empty():
                 curr += 1
-                report: Report = checkpoint.out.get_nowait()
+                report: Report = checkpoint.out.get()
                 checkpoint.df = report.to_df(checkpoint.df)
-                checkpoint.out.task_done()
             
             rate = (curr - last) / refresh
             remaing = checkpoint.inp.size()
@@ -544,7 +541,7 @@ def gen_exp_4() -> None:
 
 
 def main() -> None:
-    gen_exp_4()
+    gen_exp_2()
 
 
 if __name__ == '__main__':
