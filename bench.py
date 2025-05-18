@@ -233,12 +233,6 @@ class Config:
         if not isinstance(self.l2, NoneCache):
             args['size'] += self.l2.size
 
-        if log == None:
-            print(' '.join(cmd))
-            print("DONE")
-        else: 
-            log.write(' '.join(cmd) + '\n')
-            log.write("DONE\n")
         out = ""
         with tempfile.TemporaryFile(mode='w+') as temp_stderr:
             # Run the subprocess, redirecting stderr to the temporary file
@@ -248,6 +242,12 @@ class Config:
             temp_stderr.seek(0)
             out = temp_stderr.read()
 
+        if log == None:
+            print(' '.join(cmd))
+            print("DONE")
+        else: 
+            log.write(' '.join(cmd) + '\n')
+            log.write("DONE\n")
         return Report(out, args)
 
 
@@ -378,11 +378,13 @@ def gen_exp_2() -> None:
     blocks = [2**i for i in range(3, 30)]
     sets = [2 ** i for i in range(30)]
     ways = [2 ** i for i in range(30)]
-    args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
 
     def populate():
+        args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
         t = len(args) * 2
         i = 0
+        args = args[:t // 2]
+        configs = []
         if not os.path.exists('missing.csv'):
             for block, st, way in map(lambda x: (2**x[0], 2**x[1], 2**x[2]), args):
                 for bench in BENCHMARKS:
@@ -390,7 +392,7 @@ def gen_exp_2() -> None:
                         1, st, block, way, 'LRU'))
                     i += 1
                     print(f"[POPULATE {i}/{t}] {config}")
-                    checkpoint.inp.put_unsync(config)
+                    configs.append(config)
         else:
             miss = pd.read_csv('missing.csv')
             t = miss.shape[0]
@@ -402,16 +404,15 @@ def gen_exp_2() -> None:
                 print(f"[POPULATE {i}/{t}] {config}")
                 checkpoint.inp.put(config)
 
+        checkpoint.inp.put_many_unsync(configs)
 
 
-        for _ in range(THRD_AMOUNT):
-            checkpoint.inp.put(None)
 
     if not checkpoint.load():
         populate()
         checkpoint.save()
 
-    threads = [RunThread(checkpoint.inp, checkpoint.out)
+    threads = [RunThread(checkpoint.inp.name, checkpoint.out.name)
                for _ in range(THRD_AMOUNT)]
 
     for _ in range(len(threads)):
@@ -485,7 +486,7 @@ def gen_exp_4() -> None:
 
     def populate():
         args = list(gen_args(20))
-        args = args[len(args)//2:]
+        args = args[len(args)//4 * 3:]
         t = len(args) * 2
         i = 0
         configs = []
@@ -544,7 +545,7 @@ def gen_exp_4() -> None:
 
 
 def main() -> None:
-    gen_exp_4()
+    gen_exp_2()
 
 
 if __name__ == '__main__':
