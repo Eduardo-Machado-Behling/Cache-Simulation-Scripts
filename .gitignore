@@ -8,3 +8,7 @@ checkpoint.pickle
 *.db*
 *.msg
 *.out
+*.txt
+args*
+build
+cache-sim
