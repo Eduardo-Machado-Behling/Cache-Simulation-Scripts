@@ -18,7 +18,7 @@ atomic_stack_t *create_stack(size_t max_size);
 
 report_t *stack_push(atomic_stack_t *stack);
 report_t *stack_pop(atomic_stack_t *stack);
-void stack_to_csv(atomic_stack_t *stack, const char *filepath);
+void stack_to_csv(atomic_stack_t *stack, const char *filepath, int wait);
 size_t stack_size(atomic_stack_t *stack);
 
 void stack_lock(atomic_stack_t *stack);

@@ -5,6 +5,9 @@ import os
 from typing import *
 from dataclasses import dataclass, field
 import pandas as pd
+import random
+import sys
+import itertools
 
 
 @dataclass
@@ -108,7 +111,18 @@ def gen_agg_cols(df: pd.DataFrame) -> pd.DataFrame:
     df['cache ul1: associativity'] = cache.apply(lambda x: int(x[3])).astype(int)
     return df
 
-def populate():
+def gen_agg_cols_2(df: pd.DataFrame) -> pd.DataFrame:
+    cache = df['-cache:dl1'].apply(lambda x: x.split(':'))
+    df['cache dl1: nsets'] = cache.apply(lambda x: int(x[1])).astype(int)
+    df['cache dl1: blocksize'] = cache.apply(lambda x: int(x[2])).astype(int)
+    df['cache dl1: associativity'] = cache.apply(lambda x: int(x[3])).astype(int)
+    cache = df['-cache:il1'].apply(lambda x: x.split(':'))
+    df['cache il1: nsets'] = cache.apply(lambda x: int(x[1])).astype(int)
+    df['cache il1: blocksize'] = cache.apply(lambda x: int(x[2])).astype(int)
+    df['cache il1: associativity'] = cache.apply(lambda x: int(x[3])).astype(int)
+    return df
+
+def populate_exp2():
     args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
     t = len(args) * 2
     i = 0
@@ -131,7 +145,16 @@ BENCHMARK_TO_DF = {
     BENCHMARKS[1]: "vortex.ss;tiny.in"
 }
 
-def check_missing(df: pd.DataFrame):
+def gen_args(max: int):
+    range_values = range(max)  # Define the range for each variable
+
+    return [
+        (x, y, z, a, b, c)
+        for x, y, z, a, b, c in itertools.product(range_values, repeat=6)
+        if x + y + z + a + b + c <= max and x > 2 and a > 2
+    ]
+
+def check_missing_exp2(df: pd.DataFrame):
     args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
     t = len(args) * 2
     i = 0
@@ -146,14 +169,6 @@ def check_missing(df: pd.DataFrame):
                 print(f"[POPULATE {i}/{t}] {config}")
                 configs.append(config)
     
-    # records = df[sep].to_dict('records')
-
-    # def f(config: Config):
-    #     d = {sep[0]: config.l1.sets, sep[1]: config.l1.blocks, sep[2]: config.l1.associativity}
-        
-    #     return not d in records
-
-    # fil = list(filter(f, configs))
 
     existing = set(tuple(row[col] for col in sep) for _, row in df.iterrows())
     # Extract existing configs as a set of tuples
@@ -165,16 +180,74 @@ def check_missing(df: pd.DataFrame):
 
     fil = list(filter(f, configs))
 
-
+    random.shuffle(fil)
     dump(fil)
+
+def check_missing_exp4(df: pd.DataFrame):
+    args = gen_args(20)
+    t = len(args) * 2
+    i = 0
+    configs: List[Config] = []
+    sep = ["benchmark", "cache ul1: nsets","cache ul1: blocksize","cache ul1: associativity", "cache ul2: nsets","cache ul2: blocksize","cache ul2: associativity"]
+    if not os.path.exists('missing.csv'):
+        for block, st, way, block2, st2, way2 in map(lambda x: map(lambda y: 2**y, x), args):
+            for bench in BENCHMARKS:
+                config = Config(bench, HavardCache(
+                    HavardCache.InstructionCache( 1, st, block, way, 'LRU'),
+                    HavardCache.DataCache( 1, st2, block2, way2, 'LRU')
+                ))
+                i += 1
+                print(f"[POPULATE {i}/{t}] {config}")
+                configs.append(config)
+    
+
+    existing = set(tuple(row[col] for col in sep) for _, row in df.iterrows())
+    # Extract existing configs as a set of tuples
+
+    # Filter only configs not in existing
+    def f(config: Config):
+        key = (BENCHMARK_TO_DF[config.bench], config.l1.sets, config.l1.blocks, config.l1.associativity, config.l2.sets, config.l2.blocks, config.l2.associativity)
+        return key not in existing
+
+    fil = list(filter(f, configs))
+
+    random.shuffle(fil)
+    dump(fil)
+
+def populate_exp4():
+    args = gen_args(20)
+    args = args[len(args)//4 * 3:]
+    t = len(args) * 2
+    i = 0
+    args = args
+    configs = []
+    if not os.path.exists('missing.csv'):
+        for block, st, way, block2, st2, way2 in map(lambda x: map(lambda y: 2**y, x), args):
+            for bench in BENCHMARKS:
+                config = Config(bench, HavardCache(
+                    HavardCache.InstructionCache( 1, st, block, way, 'LRU'),
+                    HavardCache.DataCache( 1, st2, block2, way2, 'LRU')
+                ))
+                i += 1
+                print(f"[POPULATE {i}/{t}] {config}")
+                configs.append(config)
+
+    dump(configs)
 
 
 
 def main() -> None:
     if os.path.exists("out.csv"):
-        check_missing(gen_agg_cols(pd.read_csv("out.csv")))
+        if len(sys.argv) == 1 or sys.argv[1] == 'exp II':
+            check_missing_exp2(gen_agg_cols(pd.read_csv("out.csv")))
+        else:
+            check_missing_exp4(gen_agg_cols_2(pd.read_csv("out.csv")))
     else:
-        populate()
+        if len(sys.argv) == 1 or sys.argv[1] == 'exp II':
+            populate_exp2()
+        else:
+            populate_exp4()
+
 
 if __name__ == '__main__':
     main()

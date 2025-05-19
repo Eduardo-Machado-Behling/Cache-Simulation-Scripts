@@ -8,7 +8,6 @@ checkpoint.pickle
 *.db*
 *.msg
 *.out
-*.txt
-args*
+args.in*
 build
 cache-sim

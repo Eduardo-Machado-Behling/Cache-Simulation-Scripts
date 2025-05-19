@@ -13,6 +13,10 @@
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 
+#ifndef THRDS_AMOUNT
+#define THRDS_AMOUNT 4
+#endif
+
 void create_report(report_t *report, args_t *cmd, char *buff, int size) {
   PCRE2_SPTR pattern = (PCRE2_SPTR) R"(sim: \*\* simulation statistics \*\*)";
   PCRE2_SPTR subject = (PCRE2_SPTR)buff;
@@ -212,24 +216,30 @@ void format_time(int total_seconds, char *buffer, size_t buffer_size) {
 void __save() {
   printf("exiting... saving...\n");
   running = 0;
-  stack_to_csv(stack, "out.csv");
+  stack_to_csv(stack, "out.csv", 1);
 
   clock_gettime(CLOCK_MONOTONIC, &end);
   elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
   format_time(elapsed, time_str, sizeof(time_str)); // 1:01:01
-  printf("Total elapsed time %s for %ld simulations\n", time_str, stack_size(stack));
+  printf("Total elapsed time %s for %ld simulations\n", time_str,
+         stack_size(stack));
 }
 
 void save(int status) { exit(EXIT_FAILURE); }
 
-
 int main(int argc, const char **argv, const char **envp) {
-  system("python3 gen_in.py");
+  {
+    char buf[512] = "python3 gen_in.py";
+    if (argc > 1) {
+      snprintf(buf, sizeof(buf), "python3 gen_in.py \"%s\"", argv[1]);
+    }
+    system(buf);
+  }
   args_queue_t *queue = parse_args("args.input");
   stack = create_stack(args_queue_size(queue) + 1);
   clock_gettime(CLOCK_MONOTONIC, &start);
 
-  const int NUM_THREADS = 4;
+  const int NUM_THREADS = THRDS_AMOUNT;
   pthread_t threads[NUM_THREADS];
   thrd_args_t threads_args[NUM_THREADS];
   int ids[NUM_THREADS];
@@ -251,9 +261,10 @@ int main(int argc, const char **argv, const char **envp) {
     elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 
     format_time(elapsed, time_str, sizeof(time_str)); // 1:01:01
-    printf("[%s]: queued: %d, stacked: %ld\n", time_str,
-           args_queue_size(queue), stack_size(stack));
+    printf("[%s]: queued: %d, stacked: %ld\n", time_str, args_queue_size(queue),
+           stack_size(stack));
     sleep(5);
+    stack_to_csv(stack, "out.csv", 0);
   }
 
   for (int i = 0; i < NUM_THREADS; ++i) {
