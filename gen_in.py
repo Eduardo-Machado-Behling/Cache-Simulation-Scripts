@@ -153,11 +153,10 @@ def gen_args(min: int, max: int):
     pre = [
         (x, y, z, a, b, c)
         for x, y, z, a, b, c in itertools.product(range_values, repeat=6)
+        if x+y+z+a+b+c <= max and x+y+z+a+b+c >= min and x > 2 and a > 2
     ]
     print('pre', len(pre))
-    fil = list(filter(lambda x: sum(x) <= max and sum(x) >= min and x[0] > 2 and x[3] > 2, pre))
-    print('fil', len(fil))
-    return fil
+    return pre
 
 
 def check_missing_exp2(df: pd.DataFrame):
@@ -194,7 +193,7 @@ def check_missing_exp4(df: pd.DataFrame):
     t = len(args) * 2
     i = 0
     configs: List[Config] = []
-    sep = ["benchmark", "cache ul1: nsets","cache ul1: blocksize","cache ul1: associativity", "cache ul2: nsets","cache ul2: blocksize","cache ul2: associativity"]
+    sep = ["benchmark", "cache il1: nsets","cache il1: blocksize","cache il1: associativity", "cache dl1: nsets","cache dl1: blocksize","cache dl1: associativity" ]
     if not os.path.exists('missing.csv'):
         for block, st, way, block2, st2, way2 in map(lambda x: map(lambda y: 2**y, x), args):
             for bench in BENCHMARKS:
@@ -212,7 +211,7 @@ def check_missing_exp4(df: pd.DataFrame):
 
     # Filter only configs not in existing
     def f(config: Config):
-        key = (BENCHMARK_TO_DF[config.bench], config.l1.sets, config.l1.blocks, config.l1.associativity, config.l2.sets, config.l2.blocks, config.l2.associativity)
+        key = (BENCHMARK_TO_DF[config.bench], config.l1.inst.sets, config.l1.inst.blocks, config.l1.inst.associativity, config.l1.data.sets, config.l1.data.blocks, config.l1.data.associativity)
         return key not in existing
 
     fil = list(filter(f, configs))
