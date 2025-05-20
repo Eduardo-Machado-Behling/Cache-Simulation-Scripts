@@ -46,7 +46,6 @@ const char cols_labels[35][22] = {
 typedef struct atomic_stack_t {
   report_t *data;
   atomic_int used;
-  int done;
   int off;
 
   atomic_int lock;
@@ -59,7 +58,6 @@ atomic_stack_t *create_stack(size_t max_size) {
 
   atomic_store(&stack->used, 0);
   atomic_store(&stack->lock, 0);
-  stack->done = 0;
   stack->off = 0;
   stack->data = malloc(max_size * sizeof(*stack->data));
   if (!stack->data) {
@@ -70,16 +68,14 @@ atomic_stack_t *create_stack(size_t max_size) {
   return stack;
 }
 
-report_t *stack_push(atomic_stack_t *stack) {
-  return stack->data + atomic_fetch_add(&stack->used, 1);
+void stack_push(atomic_stack_t *stack, report_t *r) {
+  report_t *rep = stack->data + atomic_fetch_add(&stack->used, 1);
+  *rep = *r;
 }
 
 void stack_lock(atomic_stack_t *stack) { atomic_fetch_add(&stack->lock, 1); }
 
-void stack_unlock(atomic_stack_t *stack) {
-  atomic_fetch_sub(&stack->lock, 1);
-  stack->done++;
-}
+void stack_unlock(atomic_stack_t *stack) { atomic_fetch_sub(&stack->lock, 1); }
 
 report_t *stack_pop(atomic_stack_t *stack) {
   return stack->data + atomic_fetch_sub(&stack->used, 1);
@@ -111,17 +107,16 @@ void stack_to_csv(atomic_stack_t *stack, const char *filepath, int wait) {
     sleep(5);
   }
 
-  size_t done = stack->done;
-  for (size_t row = 0; row < done; row++) {
+  size_t done = stack->used;
+  for (size_t row = stack->off; row < done; row++) {
     for (size_t i = 0; i < cols; i++) {
-      fputs(stack->data[row + stack->off].df[i], fp);
+      fputs(stack->data[row].df[i], fp);
       fputc(i == cols - 1 ? '\n' : ',', fp);
     }
   }
 
-  if (done != 0) {
+  if (done > stack->off) {
     stack->off = done;
-    stack->done -= done;
   }
 
   fclose(fp);

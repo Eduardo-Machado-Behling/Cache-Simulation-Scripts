@@ -123,7 +123,7 @@ def gen_agg_cols_2(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def populate_exp2():
-    args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
+    args = list(filter(lambda x: sum(x) <= 20, [(x, y, z) for x in range(3, 21) for y in range(21) for z in range(21)]))
     t = len(args) * 2
     i = 0
     args = args
@@ -145,17 +145,21 @@ BENCHMARK_TO_DF = {
     BENCHMARKS[1]: "vortex.ss;tiny.in"
 }
 
-def gen_args(max: int):
+def gen_args(min: int, max: int):
     range_values = range(max)  # Define the range for each variable
 
-    return [
+    pre = [
         (x, y, z, a, b, c)
         for x, y, z, a, b, c in itertools.product(range_values, repeat=6)
-        if x + y + z + a + b + c <= max and x > 2 and a > 2
     ]
+    print('pre', len(pre))
+    fil = list(filter(lambda x: sum(x) <= max and sum(x) >= min and x[0] > 2 and x[3] > 2, pre))
+    print('fil', len(fil))
+    return fil
+
 
 def check_missing_exp2(df: pd.DataFrame):
-    args = list(filter(lambda x: sum(x) <= 30, [(x, y, z) for x in range(3, 30) for y in range(30) for z in range(30)]))
+    args = list(filter(lambda x: sum(x) <= 20, [(x, y, z) for x in range(3, 21) for y in range(21) for z in range(21)]))
     t = len(args) * 2
     i = 0
     configs: List[Config] = []
@@ -184,7 +188,7 @@ def check_missing_exp2(df: pd.DataFrame):
     dump(fil)
 
 def check_missing_exp4(df: pd.DataFrame):
-    args = gen_args(20)
+    args = gen_args(10, 20)
     t = len(args) * 2
     i = 0
     configs: List[Config] = []
@@ -215,8 +219,7 @@ def check_missing_exp4(df: pd.DataFrame):
     dump(fil)
 
 def populate_exp4():
-    args = gen_args(20)
-    args = args[len(args)//4 * 3:]
+    args = gen_args(10, 20)
     t = len(args) * 2
     i = 0
     args = args

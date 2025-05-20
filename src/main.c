@@ -163,8 +163,9 @@ void run(args_t *cmd, atomic_stack_t *stack, int fd) {
     }
     *work = '\0';
     close(pipefd[0]); // Close read end after reading
-    report_t *report = stack_push(stack);
-    create_report(report, cmd, buffer, work - buffer);
+    report_t report;
+    create_report(&report, cmd, buffer, work - buffer);
+    stack_push(stack, &report);
     waitpid(pid, NULL, 0);
   }
 }

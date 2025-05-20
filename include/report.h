@@ -8,7 +8,7 @@
 extern const char cols_labels[35][22];
 
 typedef struct report_t {
-  char df[35][48];
+  char df[48][64];
   int used;
 } report_t;
 
@@ -16,7 +16,7 @@ typedef struct atomic_stack_t atomic_stack_t;
 
 atomic_stack_t *create_stack(size_t max_size);
 
-report_t *stack_push(atomic_stack_t *stack);
+void stack_push(atomic_stack_t *stack, report_t *r);
 report_t *stack_pop(atomic_stack_t *stack);
 void stack_to_csv(atomic_stack_t *stack, const char *filepath, int wait);
 size_t stack_size(atomic_stack_t *stack);
