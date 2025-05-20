@@ -6,53 +6,30 @@
 #include <unistd.h>
 
 const char cols_labels[35][22] = {
-    "-cache:il1",
-    "-cache:dl1",
-    "-cache:il2",
-    "-cache:dl2",
-    "-tlb:dtlb",
-    "-tlb:itlb",
-    "benchmark",
-    "sim_num_insn        ",
-    "sim_num_refs        ",
-    "sim_elapsed_time    ",
-    "sim_inst_rate       ",
-    "ul1.accesses        ",
-    "ul1.hits            ",
-    "ul1.misses          ",
-    "ul1.replacements    ",
-    "ul1.writebacks      ",
-    "ul1.invalidations   ",
-    "ul1.miss_rate       ",
-    "ul1.repl_rate       ",
-    "ul1.wb_rate         ",
-    "ul1.inv_rate        ",
-    "ld_text_base        ",
-    "ld_text_size        ",
-    "ld_data_base        ",
-    "ld_data_size        ",
-    "ld_stack_base       ",
-    "ld_stack_size       ",
-    "ld_prog_entry       ",
-    "ld_environ_base     ",
-    "ld_target_big_endian",
-    "mem.page_count      ",
-    "mem.page_mem        ",
-    "mem.ptab_misses     ",
-    "mem.ptab_accesses   ",
-    "mem.ptab_miss_rate  ",
+    "-cache:il1",        "-cache:dl1",         "-cache:il2",
+    "-cache:dl2",        "-tlb:dtlb",          "-tlb:itlb",
+    "benchmark",         "sim_num_insn",       "sim_num_refs",
+    "sim_elapsed_time ", "sim_inst_rate",      "ul1.accesses",
+    "ul1.hits",          "ul1.misses",         "ul1.replacements",
+    "ul1.writebacks",    "ul1.invalidations",  "ul1.miss_rate",
+    "ul1.repl_rate",     "ul1.wb_rate  ",      "ul1.inv_rate ",
+    "ld_text_base ",     "ld_text_size ",      "ld_data_base ",
+    "ld_data_size ",     "ld_stack_base",      "ld_stack_size",
+    "ld_prog_entry",     "ld_environ_base",    "ld_target_big_endian",
+    "mem.page_count",    "mem.page_mem",       "mem.ptab_misses",
+    "mem.ptab_accesses", "mem.ptab_miss_rate",
 };
 
 typedef struct atomic_stack_t {
   report_t *data;
   atomic_int used;
-  int off;
+  size_t off;
 
   atomic_int lock;
 } atomic_stack_t;
 
 atomic_stack_t *create_stack(size_t max_size) {
-  atomic_stack_t *stack = malloc(sizeof(stack));
+  atomic_stack_t *stack = malloc(sizeof(*stack));
   if (!stack)
     return NULL;
 
@@ -108,6 +85,7 @@ void stack_to_csv(atomic_stack_t *stack, const char *filepath, int wait) {
   }
 
   size_t done = stack->used;
+  printf("done: %zu, off: %zu\n", done, stack->off);
   for (size_t row = stack->off; row < done; row++) {
     for (size_t i = 0; i < cols; i++) {
       fputs(stack->data[row].df[i], fp);

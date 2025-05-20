@@ -71,6 +71,7 @@ args_queue_t *parse_args(const char *path) {
   }
 
   queue->data = realloc(queue->data, sizeof(*queue->data) * queue->used);
+  fclose(fp);
   return queue;
 }
 

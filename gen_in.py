@@ -101,6 +101,7 @@ BENCHMARKS = [
 ]
 
 def dump(configs: List[Config]):
+    sorted(configs, key=lambda x: x.l1.size)
     with open("args.input", 'w') as args:
         args.writelines(map(lambda x: f"{x}\n", configs))
 
@@ -122,8 +123,9 @@ def gen_agg_cols_2(df: pd.DataFrame) -> pd.DataFrame:
     df['cache il1: associativity'] = cache.apply(lambda x: int(x[3])).astype(int)
     return df
 
+EXP2_MAX = 25
 def populate_exp2():
-    args = list(filter(lambda x: sum(x) <= 20, [(x, y, z) for x in range(3, 21) for y in range(21) for z in range(21)]))
+    args = list(filter(lambda x: sum(x) <= EXP2_MAX, [(x, y, z) for x in range(3, EXP2_MAX + 1) for y in range(EXP2_MAX + 1) for z in range(EXP2_MAX)]))
     t = len(args) * 2
     i = 0
     args = args
@@ -159,7 +161,7 @@ def gen_args(min: int, max: int):
 
 
 def check_missing_exp2(df: pd.DataFrame):
-    args = list(filter(lambda x: sum(x) <= 20, [(x, y, z) for x in range(3, 21) for y in range(21) for z in range(21)]))
+    args = list(filter(lambda x: sum(x) <= EXP2_MAX, [(x, y, z) for x in range(3, EXP2_MAX + 1) for y in range(EXP2_MAX + 1) for z in range(EXP2_MAX)]))
     t = len(args) * 2
     i = 0
     configs: List[Config] = []

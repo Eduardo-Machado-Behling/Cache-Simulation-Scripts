@@ -132,12 +132,16 @@ void run(args_t *cmd, atomic_stack_t *stack, int fd) {
   pipe(pipefd);        // create a dedicated pipe per run
   char *exec_argv[21]; // 20 max + 1 for NULL
 
+  printf("Running: ");
   for (int i = 0; i < cmd->argc; ++i) {
     exec_argv[i] = (char *)cmd->argv[i]; // cast OK if you're not modifying
+    printf("%s ", exec_argv[i]);
   }
+  putchar('\n');
   exec_argv[cmd->argc] = NULL; // Null-terminate
 
   pid_t pid = fork();
+
   if (pid == 0) {
     // Child process
     close(pipefd[0]);
@@ -166,6 +170,12 @@ void run(args_t *cmd, atomic_stack_t *stack, int fd) {
     report_t report;
     create_report(&report, cmd, buffer, work - buffer);
     stack_push(stack, &report);
+    printf("Done: ");
+    for (int i = 0; i < cmd->argc; ++i) {
+      exec_argv[i] = (char *)cmd->argv[i]; // cast OK if you're not modifying
+      printf("%s ", exec_argv[i]);
+    }
+    putchar('\n');
     waitpid(pid, NULL, 0);
   }
 }
@@ -239,6 +249,8 @@ int main(int argc, const char **argv, const char **envp) {
   args_queue_t *queue = parse_args("args.input");
   stack = create_stack(args_queue_size(queue) + 1);
   clock_gettime(CLOCK_MONOTONIC, &start);
+
+  printf("Amount: %d\n", args_queue_size(queue));
 
   const int NUM_THREADS = THRDS_AMOUNT;
   pthread_t threads[NUM_THREADS];
