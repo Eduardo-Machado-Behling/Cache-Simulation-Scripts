@@ -5,6 +5,7 @@ import os
 from typing import *
 from dataclasses import dataclass, field
 import pandas as pd
+import numpy as np
 import random
 import sys
 import itertools
@@ -150,10 +151,30 @@ BENCHMARK_TO_DF = {
 def gen_args(min: int, max: int):
     range_values = range(max)  # Define the range for each variable
 
+    def is_pow(n):
+        return (n & (n -1)) == 0
+
+    def valid(min, max, x,y,z,a,b,c):
+        if x < 3 or a < 3:
+            return False
+
+        xyz = 2 ** (x + y + z)
+        abc = 2 ** (a + b + c)
+        xyzabc = xyz + abc
+        
+        if not is_pow(xyzabc):
+            return False
+
+        return xyzabc >= min and xyzabc <= max
+
+
+
+    min = 2 ** min
+    max = 2 ** max
     pre = [
         (x, y, z, a, b, c)
         for x, y, z, a, b, c in itertools.product(range_values, repeat=6)
-        if x+y+z+a+b+c <= max and x+y+z+a+b+c >= min and x > 2 and a > 2
+        if valid(min, max, x,y,z,a,b,c)
     ]
     print('pre', len(pre))
     return pre
@@ -189,7 +210,7 @@ def check_missing_exp2(df: pd.DataFrame):
     dump(fil)
 
 def check_missing_exp4(df: pd.DataFrame):
-    args = gen_args(10, 20)
+    args = gen_args(int(sys.argv[1]), int(sys.argv[2]))
     t = len(args) * 2
     i = 0
     configs: List[Config] = []
@@ -220,7 +241,7 @@ def check_missing_exp4(df: pd.DataFrame):
     dump(fil)
 
 def populate_exp4():
-    args = gen_args(10, 20)
+    args = gen_args(int(sys.argv[1]), int(sys.argv[2]))
     t = len(args) * 2
     i = 0
     args = args

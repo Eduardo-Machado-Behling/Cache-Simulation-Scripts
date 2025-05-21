@@ -242,8 +242,9 @@ int main(int argc, const char **argv, const char **envp) {
   {
     char buf[512] = "python3 gen_in.py";
     if (argc > 1) {
-      snprintf(buf, sizeof(buf), "python3 gen_in.py \"%s\"", argv[1]);
+      snprintf(buf, sizeof(buf), "python3 gen_in.py %s", argv[1]);
     }
+    printf("cmd: \"%s\"", buf);
     system(buf);
   }
 
