@@ -137,7 +137,7 @@ void run(args_t *cmd, atomic_stack_t *stack, int fd) {
     exec_argv[i] = (char *)cmd->argv[i]; // cast OK if you're not modifying
     printf("%s ", exec_argv[i]);
   }
-  putchar('\n');
+  puts("\n");
   exec_argv[cmd->argc] = NULL; // Null-terminate
 
   pid_t pid = fork();
@@ -175,7 +175,7 @@ void run(args_t *cmd, atomic_stack_t *stack, int fd) {
       exec_argv[i] = (char *)cmd->argv[i]; // cast OK if you're not modifying
       printf("%s ", exec_argv[i]);
     }
-    putchar('\n');
+    puts("\n");
     waitpid(pid, NULL, 0);
   }
 }
@@ -246,6 +246,7 @@ int main(int argc, const char **argv, const char **envp) {
     }
     system(buf);
   }
+
   args_queue_t *queue = parse_args("args.input");
   stack = create_stack(args_queue_size(queue) + 1);
   clock_gettime(CLOCK_MONOTONIC, &start);

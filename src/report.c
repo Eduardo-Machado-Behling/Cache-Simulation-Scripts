@@ -1,11 +1,13 @@
 #include "report.h"
 
+#include <fcntl.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
-const char cols_labels[35][22] = {
+const char cols_labels[][22] = {
     "-cache:il1",        "-cache:dl1",         "-cache:il2",
     "-cache:dl2",        "-tlb:dtlb",          "-tlb:itlb",
     "benchmark",         "sim_num_insn",       "sim_num_refs",
@@ -62,6 +64,7 @@ size_t stack_size(atomic_stack_t *stack) { return stack->used; }
 
 void stack_to_csv(atomic_stack_t *stack, const char *filepath, int wait) {
   char mode[2] = {0};
+
   int csv_exists = access(filepath, F_OK) == 0;
   if (csv_exists) {
     mode[0] = 'a';
@@ -69,6 +72,18 @@ void stack_to_csv(atomic_stack_t *stack, const char *filepath, int wait) {
     mode[0] = 'w';
   }
   FILE *fp = fopen(filepath, mode);
+  if (!fp) {
+    perror("fp NULL: ");
+    return;
+  }
+
+  int fd = fileno(fp);
+  struct stat file_stat;
+  if (fstat(fd, &file_stat)) {
+    perror("not fstat");
+    return;
+  }
+  size_t last_size = file_stat.st_size;
 
   const size_t cols = sizeof(cols_labels) / sizeof(cols_labels[0]);
 
@@ -87,14 +102,29 @@ void stack_to_csv(atomic_stack_t *stack, const char *filepath, int wait) {
   size_t done = stack->used;
   printf("done: %zu, off: %zu\n", done, stack->off);
   for (size_t row = stack->off; row < done; row++) {
+    fputs("Saving: ", stdout);
     for (size_t i = 0; i < cols; i++) {
       fputs(stack->data[row].df[i], fp);
       fputc(i == cols - 1 ? '\n' : ',', fp);
+      fputs(stack->data[row].df[i], stdout);
+      fputc(i == cols - 1 ? '\n' : ',', stdout);
     }
+    fputc('\n', stdout);
   }
 
   if (done > stack->off) {
     stack->off = done;
+    last_size = file_stat.st_size;
+    fflush(fp);
+    if (fstat(fd, &file_stat)) {
+      perror("not fstat");
+      return;
+    }
+
+    if (last_size == file_stat.st_size) {
+      perror("same size after write");
+      exit(EXIT_FAILURE);
+    }
   }
 
   fclose(fp);
