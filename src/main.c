@@ -238,6 +238,18 @@ void __save() {
 
 void save(int status) { exit(EXIT_FAILURE); }
 
+char *get_estimated(char *buff, int size, float elapsed, int remaining) {
+  size_t done = stack_size(stack);
+  if (done == 0) {
+    snprintf(buff, size, "inf+");
+  } else {
+    float time = elapsed / done * remaining;
+    format_time(time, buff, size);
+  }
+
+  return buff;
+}
+
 int main(int argc, const char **argv, const char **envp) {
   {
     char buf[512] = "python3 gen_in.py";
@@ -271,13 +283,15 @@ int main(int argc, const char **argv, const char **envp) {
                    threads_args + i);
   }
 
+  char buff[24];
   while (args_queue_size(queue)) {
     clock_gettime(CLOCK_MONOTONIC, &end);
     elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
 
     format_time(elapsed, time_str, sizeof(time_str)); // 1:01:01
-    printf("[%s]: queued: %d, stacked: %ld\n", time_str, args_queue_size(queue),
-           stack_size(stack));
+    printf("[%s]: queued: %d, stacked: %ld, estimated=[%s]\n", time_str,
+           args_queue_size(queue), stack_size(stack),
+           get_estimated(buff, sizeof(buff), elapsed, args_queue_size(queue)));
     sleep(5);
     stack_to_csv(stack, "out.csv", 0);
   }
